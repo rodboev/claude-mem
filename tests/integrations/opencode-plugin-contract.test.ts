@@ -1,10 +1,11 @@
 import { describe, it, expect } from "bun:test";
+import * as opencodePluginEntrypoint from "../../src/integrations/opencode-plugin/index";
 import {
-  ClaudeMemPlugin,
-  parseSearchResponse,
   REGISTERED_OPENCODE_HOOKS,
   REAL_OPENCODE_EVENT_TYPES,
-} from "../../src/integrations/opencode-plugin/index";
+} from "../../src/integrations/opencode-plugin/contract";
+
+const { ClaudeMemPlugin, parseSearchResponse } = opencodePluginEntrypoint;
 
 /**
  * Regression guard for plan-08 (OpenCode event-contract correctness).
@@ -46,6 +47,18 @@ const pluginCtx = {
 };
 
 describe("OpenCode plugin event contract", () => {
+  it("keeps the runtime entrypoint export surface function-only", () => {
+    expect(Object.keys(opencodePluginEntrypoint).sort()).toEqual([
+      "ClaudeMemPlugin",
+      "default",
+      "parseSearchResponse",
+    ]);
+
+    for (const exportedValue of Object.values(opencodePluginEntrypoint)) {
+      expect(typeof exportedValue).toBe("function");
+    }
+  });
+
   it("only registers hooks that are part of OpenCode's real contract", async () => {
     const plugin = await ClaudeMemPlugin(pluginCtx);
     const hookKeys = Object.keys(plugin);

@@ -1,42 +1,6 @@
 import { z } from "zod";
 import { SettingsDefaultsManager } from "../../shared/SettingsDefaultsManager.js";
-
-/**
- * OpenCode plugin event contract.
- *
- * A plugin is an async function that receives a context object and returns an
- * object whose keys are OpenCode's real hook names. The hooks claude-mem binds
- * to are (authoritative source: plans/08-opencode-integration.md "Fix sequence"
- * step 1, cross-checked against OpenCode's documented plugin API):
- *
- *   - `tool.execute.after`            (input, output) — fires after every tool run
- *   - `event`                         ({ event })     — generic bus; event.type carries the name
- *   - `experimental.session.compacting`               — fires when a session compacts
- *
- * The generic `event` hook delivers bus events whose discriminant is
- * `event.type`. Assistant-message capture now happens via the real bus events
- * `message.updated` and `message.part.updated`, while `session.idle` and
- * `session.deleted` remain session-lifecycle events.
- *
- * REAL_OPENCODE_EVENT_TYPES is the allowlist of bus `event.type` values the
- * plugin is permitted to switch on. The contract test asserts the plugin only
- * references names in this list so a future typo fails CI.
- */
-export const REAL_OPENCODE_EVENT_TYPES = [
-  "message.updated",
-  "message.part.updated",
-  "session.idle",
-  "session.deleted",
-] as const;
-
-type RealOpenCodeEventType = (typeof REAL_OPENCODE_EVENT_TYPES)[number];
-
-/** The hook keys this plugin returns. The contract test asserts these are the real OpenCode hook names. */
-export const REGISTERED_OPENCODE_HOOKS = [
-  "tool.execute.after",
-  "event",
-  "experimental.session.compacting",
-] as const;
+import { type RealOpenCodeEventType } from "./contract.js";
 
 interface OpenCodeProject {
   name?: string;
