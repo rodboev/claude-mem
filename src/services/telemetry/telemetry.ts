@@ -42,6 +42,10 @@ export function __resetTelemetryStateForTesting(): void {
   consentCache = null;
 }
 
+// Keep the long-standing helper export stable so neighboring telemetry tests
+// and mixed-order runs reset the same singleton state.
+export const __resetTelemetryForTests = __resetTelemetryStateForTesting;
+
 function getClient(): PostHog {
   if (!client) {
     client = new PostHog(getTelemetryApiKey(), {
