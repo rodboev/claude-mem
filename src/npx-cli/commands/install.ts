@@ -1440,12 +1440,16 @@ async function promptCmemOnlineOptIn(version: string): Promise<void> {
   const ok = await submitOnlineSignup({ email, note, version });
   // Persist locally regardless of the network result so we never re-prompt;
   // a failed send is retried silently on the next install (see above).
-  mergeSettings({
+  const persisted = mergeSettings({
     CLAUDE_MEM_ONLINE_SIGNUP_EMAIL: email,
     CLAUDE_MEM_ONLINE_SIGNUP_NOTE: note,
     CLAUDE_MEM_ONLINE_SIGNUP_AT: new Date().toISOString(),
     CLAUDE_MEM_ONLINE_SIGNUP_SENT: ok ? 'true' : 'false',
   });
+  if (!persisted) {
+    spin.stop('Could not save signup details. Repair or restore ~/.claude-mem/settings.json and rerun the installer.');
+    return;
+  }
   if (ok) {
     spin.stop(`You're on the list — we'll email ${styleText('cyan', email)} your CMEM Online link.`);
   } else {
