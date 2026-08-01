@@ -226,12 +226,14 @@ function enablePluginInClaudeSettings(): void {
  */
 export function disableClaudeAutoMemory(): boolean {
   const settings = readJsonSafe<Record<string, any>>(claudeSettingsPath(), {});
+  if (settings === null || typeof settings !== 'object' || Array.isArray(settings)) {
+    throw new Error('Claude Code settings.json is not a JSON object. Repair or restore the file and rerun the installer.');
+  }
   if (
     settings.env !== undefined
     && (settings.env === null || typeof settings.env !== 'object' || Array.isArray(settings.env))
   ) {
-    log.warn('Could not update Claude Code auto-memory because settings.json has a non-object env value. Repair or restore the file and rerun the installer.');
-    return false;
+    throw new Error('Claude Code settings.json has a non-object env value. Repair or restore the file and rerun the installer.');
   }
   const env = (settings.env ?? {}) as Record<string, unknown>;
 
@@ -979,10 +981,16 @@ async function bootstrapAndPersistServerApiKey(): Promise<void> {
     '../../services/hooks/server-bootstrap.js'
   );
   const result = await bootstrapServerApiKey();
-  const persisted = persistServerSettings(USER_SETTINGS_PATH, {
-    apiKey: result.rawKey,
-    projectId: result.projectId,
-  });
+  let persisted = false;
+  try {
+    persisted = persistServerSettings(USER_SETTINGS_PATH, {
+      apiKey: result.rawKey,
+      projectId: result.projectId,
+    });
+  } catch {
+    await revokeServerApiKey(result.apiKeyId).catch(() => undefined);
+    throw new Error('settings.json could not be updated');
+  }
   if (persisted) {
     log.info(
       `Provisioned local hook API key (project=${result.projectId.slice(0, 8)}…). `
@@ -1740,10 +1748,11 @@ async function runInstallCommandInner(options: InstallOptions, summary: InstallS
   if (autoMemoryChoice === 'disable') {
     try {
       const wrote = disableClaudeAutoMemory();
-      autoMemoryStatus = wrote ? 'disabled' : 'already-disabled';
       if (wrote) {
+        autoMemoryStatus = 'disabled';
         log.success('Claude Code: auto-memory disabled (CLAUDE_CODE_DISABLE_AUTO_MEMORY=1).');
       } else {
+        autoMemoryStatus = 'already-disabled';
         log.info('Claude Code: auto-memory already disabled, leaving settings.json untouched.');
       }
     } catch (error: unknown) {
