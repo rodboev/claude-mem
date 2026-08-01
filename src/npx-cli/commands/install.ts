@@ -226,7 +226,14 @@ function enablePluginInClaudeSettings(): void {
  */
 export function disableClaudeAutoMemory(): boolean {
   const settings = readJsonSafe<Record<string, any>>(claudeSettingsPath(), {});
-  const env = (settings.env && typeof settings.env === 'object' && !Array.isArray(settings.env)) ? settings.env : {};
+  if (
+    settings.env !== undefined
+    && (settings.env === null || typeof settings.env !== 'object' || Array.isArray(settings.env))
+  ) {
+    log.warn('Could not update Claude Code auto-memory because settings.json has a non-object env value. Repair or restore the file and rerun the installer.');
+    return false;
+  }
+  const env = (settings.env ?? {}) as Record<string, unknown>;
 
   if (env.CLAUDE_CODE_DISABLE_AUTO_MEMORY === '1') {
     return false;
@@ -821,6 +828,20 @@ export function mergeSettings(
   }
 }
 
+function mergeSettingsOrWarn(
+  updates: Record<string, string>,
+  description: string,
+): boolean {
+  const wrote = mergeSettings(updates);
+  if (!wrote) {
+    log.warn(
+      `Could not save ${description} to ~/.claude-mem/settings.json. `
+        + 'Repair or restore the file and rerun the installer.',
+    );
+  }
+  return wrote;
+}
+
 type ProviderId = 'claude' | 'gemini' | 'openrouter';
 type ClaudeAccessMode = 'subscription' | 'api-key';
 type ClaudeApiMode = 'direct' | 'gateway';
@@ -869,12 +890,12 @@ async function promptRuntime(options: InstallOptions): Promise<RuntimeId> {
       await setupServerRuntimeNonInteractive(options);
       return 'server';
     }
-    mergeSettings({ CLAUDE_MEM_RUNTIME: 'worker' });
+    mergeSettingsOrWarn({ CLAUDE_MEM_RUNTIME: 'worker' }, 'the worker runtime selection');
     return 'worker';
   }
 
   if (!isInteractive) {
-    mergeSettings({ CLAUDE_MEM_RUNTIME: 'worker' });
+    mergeSettingsOrWarn({ CLAUDE_MEM_RUNTIME: 'worker' }, 'the worker runtime selection');
     return 'worker';
   }
 
@@ -892,9 +913,9 @@ async function promptRuntime(options: InstallOptions): Promise<RuntimeId> {
     process.exit(0);
   }
 
-  mergeSettings({
+  mergeSettingsOrWarn({
     CLAUDE_MEM_RUNTIME: selected,
-  });
+  }, 'the runtime selection');
 
   if (selected === 'server') {
     await maybeBootstrapServerApiKey();
@@ -910,7 +931,10 @@ async function promptRuntime(options: InstallOptions): Promise<RuntimeId> {
 async function setupServerRuntimeNonInteractive(options: InstallOptions): Promise<void> {
   const serverBaseUrl = (options.serverUrl ?? '').trim() || DEFAULT_SERVER_RUNTIME_BASE_URL;
 
-  mergeSettings({ CLAUDE_MEM_RUNTIME: 'server', CLAUDE_MEM_SERVER_URL: serverBaseUrl });
+  mergeSettingsOrWarn(
+    { CLAUDE_MEM_RUNTIME: 'server', CLAUDE_MEM_SERVER_URL: serverBaseUrl },
+    'the server runtime selection',
+  );
 
   log.info(
     'Server runtime selected. Bring up the bundled stack with '
@@ -951,7 +975,7 @@ async function maybeBootstrapServerApiKey(): Promise<void> {
 }
 
 async function bootstrapAndPersistServerApiKey(): Promise<void> {
-  const { bootstrapServerApiKey, persistServerSettings } = await import(
+  const { bootstrapServerApiKey, persistServerSettings, revokeServerApiKey } = await import(
     '../../services/hooks/server-bootstrap.js'
   );
   const result = await bootstrapServerApiKey();
@@ -965,6 +989,7 @@ async function bootstrapAndPersistServerApiKey(): Promise<void> {
         + 'Settings saved with mode 0600.',
     );
   } else {
+    await revokeServerApiKey(result.apiKeyId).catch(() => undefined);
     console.warn(
       '[install] Server API key provisioned but settings.json could not be updated. '
         + 'Repair or restore ~/.claude-mem/settings.json and rerun the installer.',
@@ -1397,7 +1422,7 @@ async function promptCmemOnlineOptIn(version: string): Promise<void> {
     // reached the service, quietly retry once now and record the result.
     if (!prior.sent) {
       const ok = await submitOnlineSignup({ email: prior.email, note: prior.note, version });
-      if (ok) mergeSettings({ CLAUDE_MEM_ONLINE_SIGNUP_SENT: 'true' });
+      if (ok) mergeSettingsOrWarn({ CLAUDE_MEM_ONLINE_SIGNUP_SENT: 'true' }, 'the signup delivery status');
     }
     return;
   }
