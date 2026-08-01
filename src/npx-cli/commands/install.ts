@@ -203,13 +203,20 @@ function registerPlugin(version: string): void {
   writeJsonFileAtomic(installedPluginsPath(), installedPlugins);
 }
 
-function enablePluginInClaudeSettings(): void {
-  const settings = readJsonSafe<Record<string, any>>(claudeSettingsPath(), {});
+export function enablePluginInClaudeSettings(settingsPath = claudeSettingsPath()): void {
+  const parsed = readJsonSafe<unknown>(settingsPath, {});
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Claude Code settings.json is not a JSON object. Repair or restore the file and rerun the installer.');
+  }
+  const settings = parsed as Record<string, any>;
 
-  if (!settings.enabledPlugins) settings.enabledPlugins = {};
+  if (settings.enabledPlugins === undefined) settings.enabledPlugins = {};
+  if (settings.enabledPlugins === null || typeof settings.enabledPlugins !== 'object' || Array.isArray(settings.enabledPlugins)) {
+    throw new Error('Claude Code settings.json has a non-object enabledPlugins value. Repair or restore the file and rerun the installer.');
+  }
   settings.enabledPlugins['claude-mem@thedotmack'] = true;
 
-  writeJsonFileAtomic(claudeSettingsPath(), settings);
+  writeJsonFileAtomic(settingsPath, settings);
 }
 
 /**
@@ -1010,10 +1017,10 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
 
   const persistClaudeProvider = (authMethod?: 'subscription' | 'api-key' | 'gateway') => {
     const resolvedAuthMethod = authMethod ?? resolveClaudeAuthMethod();
-    const wrote = mergeSettings({
+    const wrote = mergeSettingsOrWarn({
       CLAUDE_MEM_PROVIDER: 'claude',
       CLAUDE_MEM_CLAUDE_AUTH_METHOD: resolvedAuthMethod,
-    });
+    }, 'Claude Agent SDK configuration');
     if (wrote) log.info('Saved Claude Agent SDK configuration to ~/.claude-mem/settings.json');
   };
 
@@ -1126,7 +1133,7 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
         persistClaudeProvider();
         return 'claude';
       }
-      const wrote = mergeSettings({ CLAUDE_MEM_PROVIDER: options.provider });
+      const wrote = mergeSettingsOrWarn({ CLAUDE_MEM_PROVIDER: options.provider }, `provider=${options.provider}`);
       if (wrote) log.info(`Saved provider=${options.provider} to ~/.claude-mem/settings.json`);
       log.warn(`Provider=${options.provider} requested non-interactively. API key prompt skipped — set CLAUDE_MEM_${options.provider.toUpperCase()}_API_KEY and CLAUDE_MEM_PROVIDER in settings.json or env manually if not already set.`);
       return options.provider;
@@ -1210,7 +1217,7 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
 
   const existingKey = getSetting(keyEnvName as keyof SettingsDefaults) as string | undefined;
   if (existingKey && existingKey.trim().length > 0) {
-    const wrote = mergeSettings({ CLAUDE_MEM_PROVIDER: selectedProvider });
+    const wrote = mergeSettingsOrWarn({ CLAUDE_MEM_PROVIDER: selectedProvider }, `provider=${selectedProvider}`);
     if (wrote) log.info(`Saved provider=${selectedProvider} to ~/.claude-mem/settings.json`);
     return selectedProvider;
   }
@@ -1228,10 +1235,10 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
   }
 
   const apiKey = String(apiKeyResult).trim();
-  const wrote = mergeSettings({
+  const wrote = mergeSettingsOrWarn({
     CLAUDE_MEM_PROVIDER: selectedProvider,
     [keyEnvName]: apiKey,
-  });
+  }, `provider=${selectedProvider}`);
   if (wrote) {
     log.info(`Saved provider=${selectedProvider} to ~/.claude-mem/settings.json`);
   }
@@ -1252,14 +1259,14 @@ async function promptClaudeModel(options: InstallOptions): Promise<void> {
         `Unknown Claude model: ${options.model}. Allowed: ${[...allowed].join(', ')}`,
       );
     }
-    const wrote = mergeSettings({ CLAUDE_MEM_MODEL: options.model });
+    const wrote = mergeSettingsOrWarn({ CLAUDE_MEM_MODEL: options.model }, `model=${options.model}`);
     if (wrote) {
       log.info(`Saved Claude model=${options.model} to ~/.claude-mem/settings.json`);
     }
     return;
   }
   if (options.model && allowCustomModel) {
-    const wrote = mergeSettings({ CLAUDE_MEM_MODEL: options.model });
+    const wrote = mergeSettingsOrWarn({ CLAUDE_MEM_MODEL: options.model }, `model=${options.model}`);
     if (wrote) {
       log.info(`Saved gateway model=${options.model} to ~/.claude-mem/settings.json`);
     }
@@ -1284,7 +1291,7 @@ async function promptClaudeModel(options: InstallOptions): Promise<void> {
     }
 
     const selectedModel = String(result).trim();
-    const wrote = mergeSettings({ CLAUDE_MEM_MODEL: selectedModel });
+    const wrote = mergeSettingsOrWarn({ CLAUDE_MEM_MODEL: selectedModel }, `model=${selectedModel}`);
     if (wrote) {
       log.info(`Saved gateway model=${selectedModel} to ~/.claude-mem/settings.json`);
     }
@@ -1309,7 +1316,7 @@ async function promptClaudeModel(options: InstallOptions): Promise<void> {
   }
   const selectedModel = result as string;
 
-  const wrote = mergeSettings({ CLAUDE_MEM_MODEL: selectedModel });
+  const wrote = mergeSettingsOrWarn({ CLAUDE_MEM_MODEL: selectedModel }, `model=${selectedModel}`);
   if (wrote) {
     log.info(`Saved Claude model=${selectedModel} to ~/.claude-mem/settings.json`);
   }
